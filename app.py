@@ -6,7 +6,6 @@ import xgboost as xgb
 AIR_RATE = 4.50        # USD/kg
 UNIT_WEIGHT = 1.2      # kg/pc
 COST_PER_AIR_PC = AIR_RATE * UNIT_WEIGHT
-BASE_OCEAN_COST_PC = 1.50  
 
 st.set_page_config(page_title="MK DIS System", layout="wide")
 
@@ -18,15 +17,27 @@ def load_ai_model():
 
 model = load_ai_model()
 
-# --- GIAO DIỆN ĐIỀU KHIỂN ---
-st.title("📦 MK Distribution Intelligence System (DIS)")
-st.sidebar.header("🕹️ Thiết lập Sự cố (Data Inputs)")
+# --- GIAO DIỆN ĐIỀU KHIỂN (SIDEBAR) ---
+st.sidebar.title("📦 MK DIS Control Panel")
+st.sidebar.header("🕹️ Biến số Sự cố (Dynamic Inputs)")
 
 input_delay = st.sidebar.number_input("Port Congestion Delay (Days)", value=15)
 input_cost_spike = st.sidebar.slider("Ocean Cost Increase (%)", 0, 50, 20) / 100
 input_order_qty = st.sidebar.selectbox("At-Risk Order (Target DC)", [20000, 13773], index=0)
 input_stock = st.sidebar.slider("Current DC Stock (Days)", 1, 30, 10)
 
+# Hiển thị các Hằng số tĩnh theo yêu cầu của BTC
+st.sidebar.markdown("---")
+st.sidebar.header("🔒 System Constants (Baseline)")
+st.sidebar.info(
+    "✈️ **Airfreight Rate:** $4.50/kg\n\n"
+    "📦 **Product Weight:** 1.2 kg/pc\n\n"
+    "🛡️ **DC Safety Buffer Rule:** < 1 week (7 Days)\n\n"
+    "📉 **SLA Breach Rule:** < 95%"
+)
+
+# --- PHẦN HIỂN THỊ CHÍNH ---
+st.title("📦 MK Distribution Intelligence System (DIS)")
 st.markdown("*Lưu ý: Trong thực tế, hệ thống được tích hợp API với AIS (Hệ thống nhận dạng tàu tự động) để nhận diện delay theo thời gian thực mà không cần nhập thủ công.*")
 
 # --- COMPONENT 1: DECISION LOGIC (IF-THEN) ---
@@ -47,14 +58,15 @@ else:
 
 st.divider()
 
-# --- COMPONENT 2 & 4: DISRUPTION SCENARIO & AI VALUE ---
-st.subheader("📊 Component 2: Scenario Analysis (Before vs. After)")
+# --- COMPONENT 2, 3 & 4: SCENARIO ANALYSIS, DASHBOARD & AI VALUE ---
+st.subheader("📊 Component 2 & 3: Scenario Analysis & KPI Dashboard")
 
 if system_triggered:
     stock_health = input_stock - input_delay
     burn_rate = input_order_qty / 30
     is_crit = 1 if stock_health < 7 else 0
     
+    # 1. Gọi AI dự đoán
     input_features = pd.DataFrame([{
         'ocean_delay_days': input_delay,
         'cost_increase_pct': input_cost_spike,
@@ -69,28 +81,39 @@ if system_triggered:
     predicted_air_qty = max(0, min(predicted_air_qty, input_order_qty))
     ocean_qty = input_order_qty - predicted_air_qty
 
-    before_cost = input_order_qty * BASE_OCEAN_COST_PC * (1 + input_cost_spike)
+    # 2. Tính toán chi phí đồng bộ với file Excel của nhóm
+    if input_order_qty == 20000: # Lô hàng đi Mỹ
+        base_ocean_total = 6240
+        unit_ocean_cost = 6240 / 20000
+    else: # Lô hàng đi Anh (13773 pcs)
+        base_ocean_total = 5040
+        unit_ocean_cost = 5040 / 13773
+
+    before_cost = base_ocean_total * (1 + input_cost_spike)
     after_air_cost = predicted_air_qty * COST_PER_AIR_PC
-    after_ocean_cost = ocean_qty * BASE_OCEAN_COST_PC * (1 + input_cost_spike)
+    after_ocean_cost = ocean_qty * unit_ocean_cost * (1 + input_cost_spike)
     after_total_cost = after_air_cost + after_ocean_cost
 
+    # 3. Hiển thị Dashboard KPI
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### 🛑 BEFORE (Không can thiệp)")
-        st.metric("SLA (Fulfillment Rate)", "78%", "-17%", delta_color="inverse")
-        st.metric("Tình trạng Tồn kho", "Đứt gãy", f"Âm {abs(stock_health)} ngày", delta_color="inverse")
-        st.metric("Chi phí vận tải", f"${before_cost:,.0f}")
+        st.metric("1. Shipment Delay Days", f"+{int(input_delay)} Days", "CRITICAL", delta_color="inverse")
+        st.metric("2. SLA (Fulfillment Rate)", "78%", "-17%", delta_color="inverse")
+        st.metric("3. DC Stock Level", "Đứt gãy", f"Âm {abs(int(stock_health))} ngày", delta_color="inverse")
+        st.metric("Tổng Chi phí vận tải", f"${before_cost:,.0f}")
         
     with c2:
         st.markdown("### 🚀 AFTER (Hệ thống DIS can thiệp)")
-        st.metric("SLA (Fulfillment Rate)", "96.5%", "+18.5%")
-        st.metric("Tình trạng Tồn kho", "An toàn", "Đã cân bằng")
-        st.metric("Chi phí vận tải tổng", f"${after_total_cost:,.0f}")
+        st.metric("1. Shipment Delay Days", "0 Days", "RESOLVED BY AIR")
+        st.metric("2. SLA (Fulfillment Rate)", "96.5%", "+18.5%")
+        st.metric("3. DC Stock Level", "An toàn", "Giữ buffer 7 ngày")
+        st.metric("Tổng Chi phí vận tải", f"${after_total_cost:,.0f}", f"+${(after_total_cost - before_cost):,.0f} (Phí giải cứu)", delta_color="inverse")
         
     st.markdown("---")
     st.markdown("### ⚡ KẾ HOẠCH GIẢI CỨU ĐA LỚP (Tự động xuất ra từ hệ thống)")
     
-    st.warning(f"**Ưu tiên 1 (AI Optimization):** Chuyển ngay **{predicted_air_qty:,}** sản phẩm sang Airfreight. Giữ nguyên **{ocean_qty:,}** sản phẩm đi Ocean. Phân bổ này đã được AI tính toán để tối ưu chi phí cận biên.")
+    st.warning(f"**Ưu tiên 1 (AI Optimization):** Chuyển ngay **{predicted_air_qty:,}** sản phẩm sang Airfreight. Giữ nguyên **{ocean_qty:,}** sản phẩm đi Ocean. Phân bổ này đã được mô hình XGBoost tính toán để tối ưu chi phí cận biên.")
     st.info("**Ưu tiên 2 (Inventory Reallocation):** Quét thấy DC-US-W không bị ảnh hưởng. Tự động đề xuất điều xe tải (Domestic Trucking) luân chuyển 1,500 pcs sang DC-US-E để hạ nhiệt tồn kho.")
     st.success("**Ưu tiên 3 (Automated Negotiation):** Hệ thống tự động trích xuất danh sách khách hàng Priority 2, gửi thông báo tới team Sales để đàm phán giãn tiến độ giao hàng thêm 5 ngày.")
 
