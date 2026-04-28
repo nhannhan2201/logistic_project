@@ -81,17 +81,22 @@ if system_triggered:
     predicted_air_qty = max(0, min(predicted_air_qty, input_order_qty))
     ocean_qty = input_order_qty - predicted_air_qty
 
-    # 2. Tính toán chi phí đồng bộ với file Excel của nhóm
+    # 2. Tính toán chi phí đồng bộ với file Excel của nhóm (Logic FCL 40")
     if input_order_qty == 20000: # Lô hàng đi Mỹ
         base_ocean_total = 6240
-        unit_ocean_cost = 6240 / 20000
     else: # Lô hàng đi Anh (13773 pcs)
         base_ocean_total = 5040
-        unit_ocean_cost = 5040 / 13773
 
+    # Tính chi phí Before (Toàn bộ đi biển, dính phụ phí)
     before_cost = base_ocean_total * (1 + input_cost_spike)
+    
+    # Tính chi phí After (Air + FCL Ocean)
     after_air_cost = predicted_air_qty * COST_PER_AIR_PC
-    after_ocean_cost = ocean_qty * unit_ocean_cost * (1 + input_cost_spike)
+    if ocean_qty > 0:
+        after_ocean_cost = base_ocean_total * (1 + input_cost_spike) # Vẫn giữ nguyên tiền FCL
+    else:
+        after_ocean_cost = 0 # Chỉ khi bay 100% thì mới hủy được tiền container
+        
     after_total_cost = after_air_cost + after_ocean_cost
 
     # 3. Hiển thị Dashboard KPI
@@ -109,7 +114,9 @@ if system_triggered:
         st.metric("2. SLA (Fulfillment Rate)", "96.5%", "+18.5%")
         st.metric("3. DC Stock Level", "An toàn", "Giữ buffer 7 ngày")
         st.metric("Tổng Chi phí vận tải", f"${after_total_cost:,.0f}", f"+${(after_total_cost - before_cost):,.0f} (Phí giải cứu)", delta_color="inverse")
+        
     # BẢNG TRADE-OFF THỜI GIAN VÀ TIỀN BẠC
+    st.markdown("---")
     st.markdown("### ⚖️ Bảng Trade-off: Thời gian vs. Chi phí (Dữ liệu Part A)")
     
     # Lấy Leadtime gốc từ file Excel của nhóm
