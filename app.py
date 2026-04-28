@@ -109,6 +109,19 @@ if system_triggered:
         st.metric("2. SLA (Fulfillment Rate)", "96.5%", "+18.5%")
         st.metric("3. DC Stock Level", "An toàn", "Giữ buffer 7 ngày")
         st.metric("Tổng Chi phí vận tải", f"${after_total_cost:,.0f}", f"+${(after_total_cost - before_cost):,.0f} (Phí giải cứu)", delta_color="inverse")
+    # BẢNG TRADE-OFF THỜI GIAN VÀ TIỀN BẠC
+    st.markdown("### ⚖️ Bảng Trade-off: Thời gian vs. Chi phí (Dữ liệu Part A)")
+    
+    # Lấy Leadtime gốc từ file Excel của nhóm
+    base_lt = 65 if input_order_qty == 20000 else 55
+    air_cost_full = 108000 if input_order_qty == 20000 else 74374
+
+    tradeoff_df = pd.DataFrame({
+        "Phương án (Scenario)": ["1. Chịu trận đi Ocean 100%", "2. Book Air 100%", "3. AI Tối ưu hóa (Mix-mode)"],
+        "Thời gian (Leadtime)": [f"{base_lt} + {int(input_delay)} ngày (Trễ)", "3 - 5 ngày (Nhanh nhất)", "Đảm bảo SLA > 95%"],
+        "Chi phí dự kiến (USD)": [f"${before_cost:,.0f}", f"${air_cost_full:,.0f}", f"${after_total_cost:,.0f}"]
+    })
+    st.table(tradeoff_df)
         
     st.markdown("---")
     st.markdown("### ⚡ KẾ HOẠCH GIẢI CỨU ĐA LỚP (Tự động xuất ra từ hệ thống)")
